@@ -1,0 +1,1 @@
+print("Bursary and Internship Assistant")
