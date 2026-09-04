@@ -1,0 +1,67 @@
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.logo__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: linear-gradient(155deg, var(--teal-500), var(--teal-600));
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.logo--sm .logo__badge {
+  width: 28px;
+  height: 28px;
+  font-size: 0.7rem;
+}
+
+.logo__word {
+  font-size: 1.05rem;
+}
+
+.logo--sm .logo__word {
+  font-size: 0.92rem;
+}
+
+.logo__suffix {
+  margin-left: 0.35rem;
+  font-size: 0.65em;
+  font-weight: 600;
+  color: var(--teal-600);
+  vertical-align: 2px;
+}
+
+.logo-sidebar .logo__badge {
+  background: linear-gradient(155deg, var(--teal-500), #0c8994);
+}
+
+.logo-sidebar .logo__word {
+  color: #fff;
+}
+
+.logo-sidebar .logo__suffix {
+  color: var(--teal-500);
+}
+
+.logo-tagline {
+  display: block;
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 0.15rem;
+}

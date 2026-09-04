@@ -1,0 +1,72 @@
+:root {
+  /* -- color: navy + teal, taken from the TholaPath mockups -- */
+  --navy-950: #0b1526;
+  --navy-900: #0f1b33;
+  --navy-800: #16233f;
+  --navy-700: #202f4f;
+  --ink: #16213e;
+  --ink-soft: #4b5568;
+  --muted: #7c8698;
+  --line: #e4e8f0;
+  --line-soft: #edf0f6;
+  --bg: #f5f6fa;
+  --card: #ffffff;
+
+  --teal-500: #14b8c7;
+  --teal-600: #0fa3b0;
+  --teal-050: #e6f8fa;
+
+  --green-600: #1a9c5b;
+  --green-050: #e9f8ef;
+  --amber-600: #b8720a;
+  --amber-050: #fdf3e2;
+  --red-600: #c23b3b;
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --shadow-card: 0 1px 2px rgba(15, 27, 51, 0.04), 0 8px 24px rgba(15, 27, 51, 0.05);
+
+  --font-display: "Sora", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  color: var(--ink);
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font-family: var(--font-body);
+}
+
+:focus-visible {
+  outline: 2px solid var(--teal-500);
+  outline-offset: 2px;
+}
+
+code {
+  font-family: "Menlo", "Consolas", monospace;
+}
