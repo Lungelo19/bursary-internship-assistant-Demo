@@ -1,30 +1,38 @@
 """
 Chat agent for the Bursary and Internship Assistant.
 
-This talks to a local LM Studio server running Bonsai (or any other
-OpenAI-tool-calling-compatible model) and gives it a *scoped* set of
-tools:
+Flow:
 
-    - search_bursaries_by_course : look up bursaries in OUR database
-    - get_bursary_detail         : full detail for one bursary from OUR database
-    - web_search                 : general web search, for questions the
-                                    database can't answer (e.g. "what is
-                                    a NSFAS loan", "does this company have
-                                    other graduate programmes")
+    User message
+        ↓
+    Google Translation
+        ↓
+    English
+        ↓
+    Qwen via LM Studio
+        ↓
+    Database / Tools
+        ↓
+    English response
+        ↓
+    Google Translation
+        ↓
+    User response
 
-Unlike a general coding agent, this bot cannot write or edit files, run
-code, or fetch arbitrary URLs. It only reads our bursary data and, when
-that's not enough, searches the web for context. That keeps it aligned
-with its actual job: answering a student's questions about the bursary
-information the system already surfaced for them, for their course.
+The agent also limits database search results before sending them
+to Qwen so large result sets do not exceed the model context window.
 """
 
 import json
 import os
+import time
+from pathlib import Path
 
+from dotenv import load_dotenv
 from openai import OpenAI, APIError, APIConnectionError
 
 from bursary.recommendation import search_by_field, get_bursary_by_id
+from bursary.translation import translate_to_english, translate_from_english
 
 try:
     from ddgs import DDGS
@@ -33,22 +41,45 @@ except ImportError:
 
 
 # =========================================================
-# LM STUDIO CLIENT
+# ENVIRONMENT
+# =========================================================
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+ENV_FILE = BASE_DIR / ".env"
+
+load_dotenv(ENV_FILE, override=True)
+
+
+# =========================================================
+# SETTINGS
 # =========================================================
 
 LM_STUDIO_BASE_URL = os.environ.get(
     "LM_STUDIO_BASE_URL",
     "http://localhost:1234/v1"
-)
+).strip()
+
+LM_STUDIO_API_KEY = os.environ.get(
+    "LM_STUDIO_API_KEY",
+    "lm-studio"
+).strip()
 
 MODEL_NAME = os.environ.get(
     "BONSAI_MODEL_NAME",
-    "prism-ml/bonsai-27b"
-)
+    "qwen2.5-7b-instruct"
+).strip()
+
+
+# Maximum number of previous user turns sent back to Qwen.
+MAX_HISTORY_USER_TURNS = 4
+
+# Maximum number of bursaries returned from one search.
+MAX_SEARCH_RESULTS = 7
+
 
 client = OpenAI(
     base_url=LM_STUDIO_BASE_URL,
-    api_key="lm-studio"
+    api_key=LM_STUDIO_API_KEY
 )
 
 
@@ -56,75 +87,118 @@ client = OpenAI(
 # TOOL IMPLEMENTATIONS
 # =========================================================
 
-def search_bursaries_by_course(course, include_expired=False):
+def search_bursaries_by_course(
+    course,
+    include_expired=False,
+    limit=MAX_SEARCH_RESULTS
+):
     """
-    Search our own bursary database for opportunities
-    related to a field/course of study.
+    Search the bursary database for opportunities related
+    to a field or course of study.
+
+    search_by_field() performs the course matching and
+    availability/date filtering first.
+
+    Only a limited number of results are then returned to Qwen
+    to prevent large database results from filling the model's
+    context window.
     """
+
+    # -----------------------------------------------------
+    # 1. SEARCH + AVAILABILITY FILTERING
+    # -----------------------------------------------------
 
     results = search_by_field(
         course,
         include_expired=include_expired
     )
 
-    # Trim to what the model actually needs per result,
-    # full detail is available via get_bursary_detail.
-    trimmed = [
+    total_matches = len(results)
+
+    # -----------------------------------------------------
+    # 2. LIMIT RESULTS SENT TO QWEN
+    # -----------------------------------------------------
+
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = MAX_SEARCH_RESULTS
+
+    # Never allow this tool to return more than 5 results.
+    limit = max(1, min(limit, MAX_SEARCH_RESULTS))
+
+    selected_results = results[:limit]
+
+    # -----------------------------------------------------
+    # 3. RETURN ONLY INFORMATION QWEN NEEDS
+    # -----------------------------------------------------
+
+    bursaries = [
         {
             "id": bursary["id"],
             "title": bursary["title"],
-            "fields_of_study": bursary["fields_of_study"],
             "availability_status": bursary["availability_status"],
             "availability_label": bursary["availability_label"],
             "closing_date": bursary["closing_date"],
         }
-        for bursary in results
+        for bursary in selected_results
     ]
 
-    return json.dumps(trimmed)
+    return json.dumps({
+        "total_matches": total_matches,
+        "returned": len(bursaries),
+        "bursaries": bursaries,
+    })
 
 
 def get_bursary_detail(bursary_id):
     """
-    Get full detail for one bursary from our database,
-    by id.
+    Retrieve full information for one bursary from the database.
     """
 
     bursary = get_bursary_by_id(bursary_id)
 
     if bursary is None:
-        return json.dumps(
-            {"error": f"No bursary found with id {bursary_id}"}
-        )
+        return json.dumps({
+            "error": f"No bursary found with id {bursary_id}"
+        })
 
     return json.dumps(bursary)
 
 
 def web_search(query, max_results=5):
     """
-    General web search, for questions our bursary database
-    can't answer directly.
+    Search the open web when the local bursary database
+    cannot answer the question.
     """
 
     if DDGS is None:
-        return json.dumps(
-            {"error": "web search is not available in this environment"}
-        )
+        return json.dumps({
+            "error": "Web search is not available in this environment."
+        })
 
     results = []
 
-    with DDGS() as ddgs:
-        for r in ddgs.text(query, max_results=max_results):
-            results.append(
-                {
-                    "title": r.get("title"),
-                    "url": r.get("href"),
-                    "snippet": r.get("body"),
-                }
-            )
+    try:
+        with DDGS() as ddgs:
+            for result in ddgs.text(query, max_results=max_results):
+                results.append({
+                    "title": result.get("title"),
+                    "url": result.get("href"),
+                    "snippet": result.get("body"),
+                })
+
+    except Exception as error:
+        return json.dumps({
+            "error": str(error)
+        })
 
     return json.dumps(results)
 
+
+# =========================================================
+# TOOL FUNCTION MAP
+# =========================================================
 
 TOOL_FUNCTIONS = {
     "search_bursaries_by_course": search_bursaries_by_course,
@@ -133,32 +207,45 @@ TOOL_FUNCTIONS = {
 }
 
 
+# =========================================================
+# TOOL DEFINITIONS FOR QWEN
+# =========================================================
+
 TOOLS = [
     {
         "type": "function",
         "function": {
             "name": "search_bursaries_by_course",
             "description": (
-                "Search our bursary database for opportunities related "
-                "to a field or course of study, e.g. 'Computer Science' "
-                "or 'Mechanical Engineering'. Returns a short list "
-                "(id, title, fields of study, availability). Use "
-                "get_bursary_detail to get full information on any "
-                "specific result."
+                "Search the local bursary database for currently relevant "
+                "opportunities related to a field or course of study. "
+                "The search returns at most 5 bursaries to keep responses "
+                "short and prevent excessive model context usage. "
+                "Use get_bursary_detail if more information about a "
+                "specific bursary is required."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "course": {
                         "type": "string",
-                        "description": "Field/course of study to search for",
+                        "description": (
+                            "Field or course of study, for example "
+                            "'Computer Science' or 'Data Science'."
+                        ),
                     },
                     "include_expired": {
                         "type": "boolean",
                         "description": (
-                            "Set true only if the student explicitly "
-                            "asks about closed/expired bursaries too. "
-                            "Defaults to false."
+                            "Set true only if the student explicitly asks "
+                            "for closed or expired bursaries."
+                        ),
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": (
+                            "Number of results to return. "
+                            "Maximum allowed value is 5."
                         ),
                     },
                 },
@@ -171,18 +258,17 @@ TOOLS = [
         "function": {
             "name": "get_bursary_detail",
             "description": (
-                "Get full detail for one bursary from our database by "
-                "id: eligibility requirements, closing dates, application "
-                "instructions, application URL, and source. Use this "
-                "before answering specific questions about a bursary "
-                "found via search_bursaries_by_course."
+                "Retrieve complete information about one bursary from "
+                "the local database using its ID. This includes eligibility "
+                "requirements, closing dates, application instructions, "
+                "application URL and source information."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "bursary_id": {
                         "type": "integer",
-                        "description": "The bursary's id",
+                        "description": "The bursary ID.",
                     },
                 },
                 "required": ["bursary_id"],
@@ -194,21 +280,21 @@ TOOLS = [
         "function": {
             "name": "web_search",
             "description": (
-                "Search the open web. Only use this for questions our "
-                "bursary database cannot answer, e.g. general funding "
-                "concepts (what is NSFAS), background on a sponsoring "
-                "company, or bursaries/internships not yet in our "
-                "database. Do not use it to answer questions about a "
-                "bursary already found via search_bursaries_by_course "
-                "or get_bursary_detail — use our own data for those."
+                "Search the open web only when the local bursary database "
+                "cannot answer the question. Examples include general "
+                "funding concepts, information about an organisation, or "
+                "opportunities not yet stored in our database."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string"},
+                    "query": {
+                        "type": "string",
+                        "description": "The web search query.",
+                    },
                     "max_results": {
                         "type": "integer",
-                        "description": "Defaults to 5",
+                        "description": "Maximum number of search results.",
                     },
                 },
                 "required": ["query"],
@@ -218,30 +304,102 @@ TOOLS = [
 ]
 
 
+# =========================================================
+# SYSTEM PROMPT
+# =========================================================
+
 SYSTEM_PROMPT_TEMPLATE = (
     "You are the Bursary and Internship Assistant, helping a student "
     "studying {course} understand bursary and internship opportunities.\n\n"
+
     "Ground rules:\n"
+
     "- Always prefer search_bursaries_by_course and get_bursary_detail "
-    "over web_search or your own memory: they read our verified database.\n"
-    "- Only use web_search for questions our database can't answer "
-    "(general funding concepts, background on a company, opportunities "
-    "not yet in our database). Say clearly when information comes from "
-    "the open web rather than our database, since it hasn't been "
-    "verified the same way.\n"
-    "- Never invent a closing date, eligibility requirement, or "
-    "application URL. If a detail isn't in the tool results, say it "
-    "isn't confirmed and point the student to the source_url to check.\n"
-    "- Keep answers short and student-friendly. Use plain language, "
-    "avoid jargon.\n"
-    "- If nothing matches the student's course, say so plainly rather "
-    "than stretching a loosely related result to fit.\n"
-    "- Formatting: use light markdown so the chat UI can render it - "
-    "**bold** a bursary's name the first time you mention it, and use "
-    "'- ' bullet lines when listing more than one bursary or more "
-    "than one requirement. Don't use headings or tables. Write plain "
-    "closing dates and URLs as-is; the UI turns them into links."
+    "over web_search or your own memory because these tools use our "
+    "bursary database.\n"
+
+    "- search_bursaries_by_course may report that more matches exist than "
+    "were returned. Only discuss the bursaries actually included in the "
+    "tool result.\n"
+
+    "- Use get_bursary_detail when the student asks for eligibility, "
+    "application instructions, application links or detailed information "
+    "about a specific bursary.\n"
+
+    "- Only use web_search when the local database cannot answer the "
+    "question. Clearly tell the student when information comes from "
+    "the open web rather than our database.\n"
+
+    "- Never invent closing dates, eligibility requirements, application "
+    "URLs or other bursary information. If information is missing, say "
+    "that it is not confirmed.\n"
+
+    "- Keep answers short, clear and student-friendly.\n"
+
+    "- If nothing matches the student's course, say so rather than "
+    "stretching an unrelated bursary to fit.\n"
+
+    "- Always respond in English internally. The translation layer "
+    "handles translation between English and the user's language.\n"
+
+    "- Use light markdown. Bold a bursary's name the first time it is "
+    "mentioned and use bullet points when listing multiple bursaries "
+    "or requirements. Do not use tables or large headings."
 )
+
+
+# =========================================================
+# HISTORY MANAGEMENT
+# =========================================================
+
+def _trim_history(history, max_user_turns=MAX_HISTORY_USER_TURNS):
+    """
+    Keep the system message and only the most recent user turns
+    when sending conversation history back to Qwen.
+
+    Complete turns are preserved so tool calls and tool results
+    do not become separated.
+    """
+
+    if not history:
+        return []
+
+    system_message = None
+    turns = []
+    current_turn = []
+
+    for message in history:
+        role = message.get("role")
+
+        if role == "system":
+            if system_message is None:
+                system_message = message
+            continue
+
+        if role == "user":
+            if current_turn:
+                turns.append(current_turn)
+
+            current_turn = [message]
+            continue
+
+        if current_turn:
+            current_turn.append(message)
+
+    if current_turn:
+        turns.append(current_turn)
+
+    recent_turns = turns[-max_user_turns:]
+
+    trimmed_history = []
+
+    if system_message:
+        trimmed_history.append(system_message)
+
+    for turn in recent_turns:
+        trimmed_history.extend(turn)
+
+    return trimmed_history
 
 
 # =========================================================
@@ -250,12 +408,8 @@ SYSTEM_PROMPT_TEMPLATE = (
 
 def _call_model(messages, retries=2, backoff_seconds=3):
     """
-    Call LM Studio with a couple of retries, mirroring the resilience
-    of the original local agent script (the local server can fail
-    transiently under load or mid model-reload).
+    Send the conversation and available tools to Qwen.
     """
-
-    import time
 
     last_error = None
 
@@ -266,32 +420,30 @@ def _call_model(messages, retries=2, backoff_seconds=3):
                 messages=messages,
                 tools=TOOLS,
             )
+
             return response.choices[0].message
 
-        except (APIError, APIConnectionError) as e:
-            last_error = e
+        except (APIError, APIConnectionError) as error:
+            last_error = error
+
             if attempt <= retries:
                 time.sleep(backoff_seconds)
 
     raise RuntimeError(
-        "LM Studio did not respond after retrying. Check that LM "
-        f"Studio is running with {MODEL_NAME} loaded and the local "
-        f"server started at {LM_STUDIO_BASE_URL}. "
+        "LM Studio did not respond after retrying. "
+        f"Check that {MODEL_NAME} is loaded and that the server is "
+        f"running at {LM_STUDIO_BASE_URL}. "
         f"Last error: {last_error}"
     )
 
 
+# =========================================================
+# MESSAGE HELPERS
+# =========================================================
+
 def _message_to_dict(message):
     """
-    Convert an OpenAI ChatCompletionMessage into a plain dict before
-    it goes into `messages`/CHAT_SESSIONS.
-
-    Two reasons this matters instead of storing the SDK object
-    directly: it keeps every entry in the session history the same
-    shape (plain dict, matching the user/tool messages already being
-    appended), and it's what makes CHAT_SESSIONS safe to serialize
-    later if the in-memory store gets swapped for Redis or a DB
-    table, per the note in app/main.py.
+    Convert an OpenAI SDK message into a normal dictionary.
     """
 
     return message.model_dump(exclude_none=True)
@@ -299,27 +451,29 @@ def _message_to_dict(message):
 
 def _clean_reply_text(content):
     """
-    Normalize the model's final answer before it's sent to the
-    frontend: guard against None/empty content (the model can return
-    an empty string after a tool round it considers "done"), and trim
-    stray whitespace so chat bubbles don't render with dangling
-    blank lines.
+    Prevent empty model responses from being returned.
     """
 
     if not content or not content.strip():
         return (
-            "I don't have a clear answer for that yet - could you "
-            "rephrase, or ask about a specific bursary?"
+            "I don't have a clear answer for that yet. "
+            "Could you rephrase your question?"
         )
 
     return content.strip()
 
 
-def _run_tool_calls(message, messages):
+# =========================================================
+# TOOL EXECUTION
+# =========================================================
+
+def _execute_tool_calls(message):
     """
-    Execute every tool call attached to a model message and append
-    the results to the running message list.
+    Execute all tools requested by Qwen and return
+    the resulting tool messages.
     """
+
+    tool_messages = []
 
     for tool_call in message.tool_calls:
         name = tool_call.function.name
@@ -329,23 +483,28 @@ def _run_tool_calls(message, messages):
         except json.JSONDecodeError:
             args = {}
 
-        fn = TOOL_FUNCTIONS.get(name)
+        function = TOOL_FUNCTIONS.get(name)
 
-        if fn is None:
-            result = json.dumps({"error": f"Unknown tool: {name}"})
+        if function is None:
+            result = json.dumps({
+                "error": f"Unknown tool: {name}"
+            })
+
         else:
             try:
-                result = fn(**args)
-            except Exception as e:
-                result = json.dumps({"error": str(e)})
+                result = function(**args)
+            except Exception as error:
+                result = json.dumps({
+                    "error": str(error)
+                })
 
-        messages.append(
-            {
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": str(result),
-            }
-        )
+        tool_messages.append({
+            "role": "tool",
+            "tool_call_id": tool_call.id,
+            "content": str(result),
+        })
+
+    return tool_messages
 
 
 # =========================================================
@@ -354,50 +513,119 @@ def _run_tool_calls(message, messages):
 
 def run_chat_turn(course, history, user_message, max_tool_turns=6):
     """
-    Run one user turn of the conversation.
+    Run one multilingual conversation turn.
 
-    `history` is a list of OpenAI-style chat messages from earlier in
-    the session (may be empty on the first call). This function
-    appends the new user message, lets the model call tools as many
-    times as it needs (bounded by max_tool_turns), and returns:
+    Backend usage remains:
 
-        (reply_text, updated_history)
-
-    `updated_history` should be passed back in on the next call so the
-    conversation carries context across turns.
+        reply, updated_history = run_chat_turn(
+            course,
+            history,
+            user_message
+        )
     """
 
-    messages = list(history)
+    # -----------------------------------------------------
+    # 1. TRANSLATE USER MESSAGE TO ENGLISH
+    # -----------------------------------------------------
 
-    if not messages:
-        messages.append(
-            {
-                "role": "system",
-                "content": SYSTEM_PROMPT_TEMPLATE.format(course=course),
-            }
-        )
+    english_message, detected_language = translate_to_english(user_message)
 
-    messages.append({"role": "user", "content": user_message})
+    # Full conversation history stored by the backend.
+    updated_history = list(history)
+
+    # Smaller context sent to Qwen.
+    model_messages = _trim_history(history)
+
+    # -----------------------------------------------------
+    # 2. SYSTEM MESSAGE
+    # -----------------------------------------------------
+
+    if not updated_history:
+        system_message = {
+            "role": "system",
+            "content": SYSTEM_PROMPT_TEMPLATE.format(course=course),
+        }
+
+        updated_history.append(system_message)
+        model_messages.append(system_message)
+
+    elif not model_messages:
+        model_messages.append({
+            "role": "system",
+            "content": SYSTEM_PROMPT_TEMPLATE.format(course=course),
+        })
+
+    # -----------------------------------------------------
+    # 3. CURRENT USER MESSAGE
+    # -----------------------------------------------------
+
+    user_message_entry = {
+        "role": "user",
+        "content": english_message,
+    }
+
+    updated_history.append(user_message_entry)
+    model_messages.append(user_message_entry)
+
+    # -----------------------------------------------------
+    # 4. QWEN + TOOL LOOP
+    # -----------------------------------------------------
 
     for _ in range(max_tool_turns):
-        message = _call_model(messages)
+        message = _call_model(model_messages)
+
+        # -------------------------------------------------
+        # FINAL MODEL RESPONSE
+        # -------------------------------------------------
 
         if not message.tool_calls:
-            reply = _clean_reply_text(message.content)
-            messages.append({"role": "assistant", "content": reply})
-            return reply, messages
+            english_reply = _clean_reply_text(message.content)
 
-        # Store the assistant message (including its tool_calls) so
-        # the tool results that follow have something to respond to.
-        # Stored as a plain dict (see _message_to_dict) rather than
-        # the raw SDK object, so every entry in `messages` is the
-        # same shape.
-        messages.append(_message_to_dict(message))
-        _run_tool_calls(message, messages)
+            assistant_message = {
+                "role": "assistant",
+                "content": english_reply,
+            }
 
-    fallback = (
-        "I wasn't able to finish looking that up in time. Could you "
-        "try asking again, maybe a bit more specifically?"
+            updated_history.append(assistant_message)
+
+            final_reply = translate_from_english(
+                english_reply,
+                detected_language,
+            )
+
+            return final_reply, updated_history
+
+        # -------------------------------------------------
+        # TOOL CALL
+        # -------------------------------------------------
+
+        assistant_tool_message = _message_to_dict(message)
+
+        model_messages.append(assistant_tool_message)
+        updated_history.append(assistant_tool_message)
+
+        tool_messages = _execute_tool_calls(message)
+
+        model_messages.extend(tool_messages)
+        updated_history.extend(tool_messages)
+
+    # -----------------------------------------------------
+    # 5. FALLBACK
+    # -----------------------------------------------------
+
+    english_fallback = (
+        "I wasn't able to finish looking that up in time. "
+        "Please try asking again with a more specific question."
     )
-    messages.append({"role": "assistant", "content": fallback})
-    return fallback, messages
+
+    updated_history.append({
+        "role": "assistant",
+        "content": english_fallback,
+    })
+
+    final_fallback = translate_from_english(
+        english_fallback,
+        detected_language,
+    )
+
+    return final_fallback, updated_history
