@@ -1,0 +1,93 @@
+{
+  "programme_records": 702,
+  "programme_offerings": 950,
+  "unique_programme_codes": 888,
+  "unique_code_term_closing_combinations": 948,
+  "exact_duplicate_offering_keys": [
+    {
+      "programme_code": "RB-D-DOB",
+      "entry_term": "1",
+      "closing_date_raw": "",
+      "count": 2,
+      "matches": [
+        {
+          "programme_name": "Doctor of Business Administration",
+          "career_direction": "13. MANAGEMENT AND PLANNING",
+          "source_handbook_page": 133
+        },
+        {
+          "programme_name": "Doctor of Business Administration",
+          "career_direction": "13. MANAGEMENT AND PLANNING",
+          "source_handbook_page": 137
+        }
+      ]
+    },
+    {
+      "programme_code": "RB-D-PGM",
+      "entry_term": "1",
+      "closing_date_raw": "",
+      "count": 2,
+      "matches": [
+        {
+          "programme_name": "Postgraduate Diploma in Management",
+          "career_direction": "13. MANAGEMENT AND PLANNING",
+          "source_handbook_page": 133
+        },
+        {
+          "programme_name": "Postgraduate Diploma in Management",
+          "career_direction": "13. MANAGEMENT AND PLANNING",
+          "source_handbook_page": 143
+        }
+      ]
+    }
+  ],
+  "records_without_requirements": [],
+  "unknown_institution_codes": [],
+  "unknown_campus_codes": [
+    "EM-V-HEN"
+  ],
+  "offerings_by_institution": {
+    "AAA School of Advertising": 8,
+    "Berea College of Technology": 45,
+    "Berea Technical College": 24,
+    "Central Technical College": 23,
+    "Durban University of Technology": 101,
+    "Eduvos": 167,
+    "MANCOSA": 66,
+    "Mangosuthu University of Technology": 65,
+    "PAX College": 92,
+    "Regent Business School": 38,
+    "Richfield Graduate Institute of Technology": 25,
+    "STADIO Institute of Higher Education": 50,
+    "University of KwaZulu-Natal": 79,
+    "University of Zululand": 145,
+    "iStudent": 22
+  },
+  "programme_records_by_career_direction": {
+    "1. ACCOUNTING, FINANCIAL MANAGEMENT": 57,
+    "10. HUMAN RESOURCES AND INDUSTRIAL RELATIONS": 20,
+    "11. HUMANITIES": 11,
+    "12. INFORMATION TECHNOLOGY (IT) & COMPUTER SCIENCE": 64,
+    "13. MANAGEMENT AND PLANNING": 124,
+    "14. MANUFACTURING": 2,
+    "15. MEDICINE, MEDICAL TECHNOLOGY": 20,
+    "16. PARA-MEDICAL": 9,
+    "17. PERFORMING ARTS": 5,
+    "18. PUBLIC RELATIONS/MARKETING": 33,
+    "19. SCIENCE AND MATHEMATICS": 98,
+    "2. ADMINISTRATION": 32,
+    "20. SERVICES TO THE COMMUNITY": 13,
+    "21. SOCIAL SCIENCES/LEGAL SERVICES": 22,
+    "22. TECHNOLOGY/PROCESSING": 2,
+    "23. TOURISM/HOSPITALITY": 26,
+    "24. TRANSPORT": 6,
+    "25. VISUAL ARTS/DESIGN": 18,
+    "3. AGRICULTURE/NATURE CONSERVATION": 26,
+    "4. COMMUNICATION/JOURNALISM": 6,
+    "5. CONSTRUCTION/SURVEYING": 10,
+    "6. CRIME PREVENTION AND SECURITY": 7,
+    "7. EDUCATION": 25,
+    "8. ENGINEERING": 60,
+    "9. HOUSING DEVELOPMENT": 6
+  }
+}

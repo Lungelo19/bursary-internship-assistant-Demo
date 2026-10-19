@@ -1,6 +1,4 @@
 """
-Bursary and Internship Assistant - FastAPI backend.
-
 Run with:
 
     uvicorn app.main:app --reload
@@ -32,7 +30,7 @@ from bursary.recommendation import (
     list_distinct_fields,
 )
 from bursary.chat_agent import run_chat_turn
-
+from app.programmes.routes import router as programmes_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -55,7 +53,10 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Bursary and Internship Assistant", lifespan=lifespan)
+app = FastAPI(title="PathwaySA API", lifespan=lifespan)
+
+# Programme discovery and recommendation API
+app.include_router(programmes_router)
 
 # Adjust in production - this is wide open for local/demo use so the
 # frontend can be served from any dev port.
