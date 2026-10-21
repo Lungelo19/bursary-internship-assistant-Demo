@@ -1,22 +1,33 @@
+# PathwaySA
 
-# Bursary and Internship Assistant
+PathwaySA is a mobile-first higher-education journey companion designed to help South African students discover suitable study pathways, explore funding opportunities, track applications, and access AI-assisted guidance throughout their journey into higher education.
 
-An AI-powered system that recommends bursaries and internships based on a student's qualification, academic performance, skills, interests, and preferences.
+The system combines a Flutter mobile application with a FastAPI backend and uses structured programme and bursary data to provide personalised recommendations.
 
 ## Project Goals
 
-The project will demonstrate:
+PathwaySA aims to support students across the higher-education journey by providing:
 
-- FastAPI backend development
-- REST API integration
-- Web scraping
-- SQLite database usage
-- Natural Language Processing
-- Fine-tuning a lightweight language model
-- Semantic search and retrieval
-- Multilingual support
-- AI-powered recommendations
+- Study programme discovery
+- Programme eligibility checking
+- Personalised programme recommendations
+- University and campus filtering
+- Bursary and funding discovery
+- Application tracking
+- Saved study opportunities
+- Multilingual AI assistance
+- Student profile management
+- Academic and higher-education guidance
 
-## Status
+## Current Architecture
 
-Prototype under development.
+```text
+Flutter Mobile App
+        ↓
+FastAPI Backend
+        ↓
+Programme Services / Bursary Services
+        ↓
+SQLite Databases
+        ↓
+AI Assistant
