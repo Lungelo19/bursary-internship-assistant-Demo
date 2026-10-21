@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException, Query
 
-from app.programmes.matcher import recommend_programmes
-from app.programmes.schemas import ProgrammeRecommendationRequest
-from app.programmes.service import (
+from programmes.matcher import recommend_programmes
+from programmes.schemas import ProgrammeRecommendationRequest
+from programmes.service import (
     get_programme_offering,
     list_campuses,
     list_career_directions,

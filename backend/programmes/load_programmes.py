@@ -3,7 +3,7 @@ import json
 import re
 from pathlib import Path
 
-from app.programmes.database import (
+from programmes.database import (
     DB_PATH,
     database_summary,
     get_connection,

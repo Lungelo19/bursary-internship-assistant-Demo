@@ -30,7 +30,7 @@ from bursary.recommendation import (
     list_distinct_fields,
 )
 from bursary.chat_agent import run_chat_turn
-from app.programmes.routes import router as programmes_router
+from programmes.routes import router as programmes_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

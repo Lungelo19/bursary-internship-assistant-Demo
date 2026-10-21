@@ -2,8 +2,8 @@ import argparse
 import json
 import re
 
-from app.programmes.database import DB_PATH, get_connection
-from app.programmes.requirements import (
+from programmes.database import DB_PATH, get_connection
+from programmes.requirements import (
     calculate_cao_points,
     evaluate_parsed_requirement,
     parse_nsc_requirement,

@@ -1,4 +1,4 @@
-from app.programmes.database import DB_PATH, get_connection
+from programmes.database import DB_PATH, get_connection
 
 
 def _load_requirements(connection, programme_ids):
