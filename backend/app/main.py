@@ -32,6 +32,11 @@ from bursary.recommendation import (
 from bursary.chat_agent import run_chat_turn
 from programmes.routes import router as programmes_router
 
+from accounts.routes import (
+    auth_router,
+    profile_router,
+)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -57,6 +62,8 @@ app = FastAPI(title="PathwaySA API", lifespan=lifespan)
 
 # Programme discovery and recommendation API
 app.include_router(programmes_router)
+app.include_router(auth_router)
+app.include_router(profile_router)
 
 # Adjust in production - this is wide open for local/demo use so the
 # frontend can be served from any dev port.
